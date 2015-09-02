@@ -3,6 +3,7 @@ jsm = require './index.js'
 readline = require 'readline'
 fs = require 'fs'
 crypto = require 'crypto'
+path = require 'path'
 
 try conf = jsm.readJsmClientConfig()
 catch e
@@ -10,20 +11,23 @@ catch e
     return
 
 commander
-    .version '0.0.1'
-    .command 'install [entry...]'
+    .command 'install [entries...]'
     .alias 'i'
-    .description 'install snippets for given entry files, if omit entry, look for entries from jsm.json.'
-    .action (entry) ->
+    .description 'Install snippets for given entry files, omit entries default to search jsm.json.'
+    .action (entries) ->
+        for entry in entries
+            jsm.install conf, entry
 
 commander
-    .command 'update [entry...]'
+    .command 'update [entries...]'
     .alias 'u'
+    .description 'Update snippets for given entry files, omit entries default to search jsm.json.'
     .action (entry) ->
 
 commander
     .command 'publish [entry]'
     .alias 'p'
+    .description 'Publish snippet, version default to 0 if entry doesn\'t end with version numbers.'
     .action (entryPath) ->
         if fs.existsSync entryPath
             entry = jsm.parseEntry entryPath
@@ -41,6 +45,7 @@ commander
 commander
     .command 'config'
     .alias 'c'
+    .description 'Config jsm repository and user info.'
     .action ->
         rl = readline.createInterface
             input: process.stdin
@@ -63,5 +68,5 @@ commander
                         rl.close()
                     else console.log 'Configure failed, please run jsm config again...'
 
-
+commander.version '0.0.1'
 commander.parse process.argv
