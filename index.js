@@ -4,13 +4,13 @@
 
   path = require('path');
 
-  fs = require('fs');
-
   http = require('http');
 
   querystring = require('querystring');
 
   url = require('url');
+
+  fs = require('fs-extra');
 
   CONFIG_FILE_NAME = '.jsm.json';
 
@@ -66,12 +66,11 @@
       });
     },
     parseEntry: parseEntry = function(filePath) {
-      var author, authorMatch, base, ext, title, titleMatch, version, versionMatch;
+      var author, base, ext, title, titleMatch, version, versionMatch;
       filePath = path.normalize(filePath);
       ext = path.extname(filePath);
       base = path.basename(filePath, ext);
-      authorMatch = (path.dirname(base)).match(/\w*/g);
-      author = authorMatch ? authorMatch[0] : void 0;
+      author = path.basename(path.dirname(filePath));
       titleMatch = base.match(/^([a-zA-Z]+)/g);
       title = (function() {
         if (titleMatch != null) {
@@ -127,15 +126,13 @@
       return req.end();
     },
     install: install = function(conf, entry) {
-      var chunks, entryContent, ext, filePath, hostname, i, lan, len, port, ref, req, requires, results, succ;
-      console.log('Installing snippet: ' + entry);
+      var entryContent, entryDir, filePath, i, len, requires, results;
+      entryDir = path.dirname(entry);
       entryContent = '';
       requires = [];
       try {
         entryContent = fs.readFileSync(entry, 'utf8');
-      } catch (_error) {
-        console.log('File doesn\'t exist: ' + entry);
-      }
+      } catch (_error) {}
       switch (extMap[path.extname(entry)]) {
         case 'javascript':
           entryContent.replace(/\brequire\s*\(\s*(["'])([^"'\s\)]+)\1\s*\)/g, function(match, quote, path) {
@@ -158,63 +155,83 @@
       results = [];
       for (i = 0, len = requires.length; i < len; i++) {
         filePath = requires[i];
-        if ((filePath.indexOf('jsm')) !== -1) {
-          entry = parseEntry(filePath);
-          chunks = [];
-          if ((entry.author != null) && (entry.title != null) && (entry.version != null)) {
-            delete entry.language;
-            ref = url.parse(conf.repository), hostname = ref.hostname, port = ref.port;
-            req = http.request({
-              hostname: hostname,
-              port: port,
-              path: '/snippet?' + querystring.stringify(entry),
-              method: 'GET'
-            }, function(res) {
-              res.on('data', function(data) {
-                return chunks.push(data);
+        results.push((function(filePath) {
+          var chunks, e, entryObj, ext, hostname, index, lan, port, ref, req, results1, succ;
+          if ((index = filePath.indexOf('jsm')) !== -1) {
+            entryObj = parseEntry(path.resolve(entryDir, filePath.slice(index + 4)));
+            filePath = path.resolve(entryDir, filePath);
+            chunks = [];
+            if ((entryObj.author != null) && (entryObj.title != null) && (entryObj.version != null)) {
+              delete entryObj.language;
+              ref = url.parse(conf.repository), hostname = ref.hostname, port = ref.port;
+              req = http.request({
+                hostname: hostname,
+                port: port,
+                path: '/snippet?' + querystring.stringify(entryObj),
+                method: 'GET'
+              }, function(res) {
+                res.on('data', function(data) {
+                  return chunks.push(data);
+                });
+                return res.on('end', function() {
+                  var e, mtime, snippet;
+                  if (res.statusCode === 200) {
+                    try {
+                      snippet = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                      if ((path.extname(filePath)) === '') {
+                        filePath += getExt(snippet.language);
+                      }
+                      fs.ensureFileSync(filePath);
+                      fs.writeFileSync(filePath, snippet.content);
+                      mtime = new Date(snippet.mtime);
+                      fs.utimesSync(filePath, mtime, mtime);
+                      install(conf, filePath);
+                      return console.log('Installing snippet: ' + filePath + ' succeessfully');
+                    } catch (_error) {
+                      e = _error;
+                      return console.log("Write snippet failed: " + filePath);
+                    }
+                  } else {
+                    console.log(res.statusCode);
+                    return console.log("Download snippet failed: " + filePath);
+                  }
+                });
               });
-              return res.on('end', function() {
-                var e, snippet;
-                try {
-                  snippet = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-                  fs.writeFileSync(filePath + ((path.extname(filePath)) === '' ? getExt(snippet.language) : ''), snippet.content);
-                  install(conf, filePath);
-                  return console.log('Installing snippet: ' + entry + ' succeessfully');
-                } catch (_error) {
-                  e = _error;
-                  return console.log("Write snippet failed: " + filePath);
-                }
+              req.on('error', function(error) {
+                console.log('Get snippet failed:' + filePath);
+                return console.log(error);
               });
-            });
-            results.push(req.on('error', function(error) {
-              console.log('Get snippet failed:' + filePath);
-              return console.log(error);
-            }));
-          } else {
-            console.log(entry);
-            results.push(console.log("Parse entry name failed: " + filePath));
-          }
-        } else {
-          if ((path.extname(filePath)) === '') {
-            succ = 0;
-            for (ext in extMap) {
-              lan = extMap[ext];
-              if (lan != null) {
-                try {
-                  install(conf, filePath + ext);
-                  succ++;
-                } catch (_error) {}
-              }
-            }
-            if (succ === 0) {
-              results.push(console.log('Can\'t resolve ' + filePath));
+              return req.end();
             } else {
-              results.push(void 0);
+              console.log(entry);
+              return console.log("Parse entry name failed: " + filePath);
             }
           } else {
-            results.push(install(conf, filePath));
+            filePath = path.resolve(entryDir, filePath);
+            if ((path.extname(filePath)) === '') {
+              succ = 0;
+              results1 = [];
+              for (ext in extMap) {
+                lan = extMap[ext];
+                if (lan != null) {
+                  try {
+                    if (fs.existsSync(filePath + ext)) {
+                      results1.push(install(conf, filePath + ext));
+                    } else {
+                      results1.push(void 0);
+                    }
+                  } catch (_error) {
+                    e = _error;
+                    results1.push(console.log(e));
+                  }
+                }
+              }
+              return results1;
+            } else {
+              return install(conf, filePath);
+            }
           }
-        }
+        })(filePath));
       }
       return results;
     }

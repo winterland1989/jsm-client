@@ -1,8 +1,8 @@
 path = require 'path'
-fs = require 'fs'
 http = require 'http'
 querystring = require 'querystring'
 url = require 'url'
+fs = require 'fs-extra'
 
 CONFIG_FILE_NAME = '.jsm.json'
 DEFAULT_REPOSITORY = 'http://jsm.winterland.me'
@@ -47,8 +47,7 @@ parseEntry: parseEntry = (filePath) ->
     ext = path.extname filePath
     base = path.basename filePath, ext
 
-    authorMatch = (path.dirname base).match /\w*/g
-    author = if authorMatch then authorMatch[0] else undefined
+    author = (path.basename(path.dirname filePath))
 
     titleMatch = base.match /^([a-zA-Z]+)/g
     title = if titleMatch? then titleMatch[0] else throw new Error "Parse entry name failed: " + filePath
@@ -92,14 +91,11 @@ publish: (conf, entry) ->
 
 
 install: install = (conf, entry) ->
-    console.log 'Installing snippet: ' + entry
+    entryDir = path.dirname entry
     entryContent = ''
     requires = []
 
-    try
-        entryContent = fs.readFileSync entry, 'utf8'
-    catch
-        console.log 'File doesn\'t exist: ' + entry
+    try entryContent = fs.readFileSync entry, 'utf8'
 
     switch extMap[path.extname entry]
         when 'javascript'
@@ -115,38 +111,45 @@ install: install = (conf, entry) ->
                 requires.push path
                 match
 
-    for filePath in requires
-        if (filePath.indexOf 'jsm') != -1
-            entry  = parseEntry filePath
+    for filePath in requires then do (filePath = filePath) ->
+        if (index = filePath.indexOf 'jsm') != -1
+            entryObj  = parseEntry (path.resolve entryDir, filePath[(index+4)..])
+            filePath = (path.resolve entryDir, filePath)
             chunks = []
-            if entry.author? and entry.title? and entry.version?
-                delete entry.language
+            if entryObj.author? and entryObj.title? and entryObj.version?
+                delete entryObj.language
                 {hostname, port} = url.parse conf.repository
                 req = http.request(
                     hostname: hostname
                     port: port
-                    path: '/snippet?' + querystring.stringify entry
+                    path: '/snippet?' + querystring.stringify entryObj
                     method: 'GET'
                 ,   (res) ->
-                        res.on 'data', (data) -> chunks.push data
+                        res.on 'data', (data) ->
+                            chunks.push data
                         res.on 'end', ->
-                            try
-                                snippet = JSON.parse Buffer.concat(chunks).toString('utf8')
-                                fs.writeFileSync(
-                                        filePath +
-                                            if (path.extname filePath) == ''
-                                                getExt snippet.language
-                                            else ''
-                                    ,   snippet.content
-                                    )
-                                install conf, filePath
-                                console.log 'Installing snippet: ' + entry + ' succeessfully'
-                            catch e
-                                console.log "Write snippet failed: " + filePath
+                            if res.statusCode == 200
+                                try
+                                    snippet = JSON.parse Buffer.concat(chunks).toString('utf8')
+                                    if (path.extname filePath) == ''
+                                        filePath += getExt snippet.language
+                                    fs.ensureFileSync filePath
+                                    fs.writeFileSync filePath, snippet.content
+                                    mtime = new Date(snippet.mtime)
+                                    fs.utimesSync filePath, mtime, mtime
+                                    install conf, filePath
+                                    console.log 'Installing snippet: ' + filePath + ' succeessfully'
+                                catch e
+                                    console.log "Write snippet failed: " + filePath
+                            else
+                                console.log res.statusCode
+                                console.log "Download snippet failed: " + filePath
+
                 )
                 req.on 'error', (error) ->
                     console.log 'Get snippet failed:' + filePath
                     console.log error
+                req.end()
 
             else
                 console.log entry
@@ -154,14 +157,17 @@ install: install = (conf, entry) ->
 
 
         else
+            filePath = (path.resolve entryDir, filePath)
             if (path.extname filePath) == ''
                 succ = 0
                 for ext, lan of extMap when lan?
                     try
-                        install conf, filePath + ext
-                        succ++
-                if succ == 0 then console.log 'Can\'t resolve ' + filePath
-            else install conf, filePath
+                        if fs.existsSync filePath + ext
+                            install conf, filePath + ext
+                    catch e
+                        console.log e
+            else
+                install conf, filePath
 
 
 

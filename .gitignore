@@ -1,0 +1,16 @@
+# editor temp files
+
+*#
+.#*
+*~
+.*.swp
+
+# TAGS files
+TAGS
+tags
+
+# stack artifacts
+/.stack-work/
+
+#node_modules
+**/node_modules

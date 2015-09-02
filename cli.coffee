@@ -10,13 +10,15 @@ catch e
     console.log e.message
     return
 
+getAbs = (p) -> path.resolve(process.cwd(), p)
+
 commander
     .command 'install [entries...]'
     .alias 'i'
     .description 'Install snippets for given entry files, omit entries default to search jsm.json.'
     .action (entries) ->
         for entry in entries
-            jsm.install conf, entry
+            jsm.install conf, (getAbs entry)
 
 commander
     .command 'update [entries...]'

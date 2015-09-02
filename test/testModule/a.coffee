@@ -1,1 +1,2 @@
-require "../jsm/base/jQuery2"
+require "../jsm/base/jquery2"
+require "../jsm/somethingwrong"
