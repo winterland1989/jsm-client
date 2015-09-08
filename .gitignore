@@ -10,6 +10,3 @@ tags
 
 # node_modules
 **/node_modules
-
-# compiled js
-*.js
