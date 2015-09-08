@@ -97,34 +97,37 @@ publish: (conf, entry) ->
     entry.keywords = JSON.stringify (parseKeywords entry.content, entry.language)
     console.log "Entry keywords: #{entry.keywords}"
 
-    checkRequires = Promise.all(
+    checkRequires = Promise.all do ->
+        ps = []
         for req in (parseRequires entry.content, entry.language)
-            index = req.indexOf 'jsm'
-            reqObj  = parseEntry req[(index+4)..]
-            console.log "Checking #{reqObj.author}/#{reqObj.title}..."
+            if (index = req.indexOf 'jsm') != -1
+                reqObj  = parseEntry (req.substr(index + 3))
+                console.log "Checking #{reqObj.author}/#{reqObj.title}..."
 
-            getData = querystring.stringify
-                title: reqObj.title
-                author: reqObj.author
-                version: reqObj.version
-            new Promise (resolve, reject) ->
-                chunks = []
-                req = http.request(
-                        hostname: hostname
-                        port: port
-                        path: '/snippet?' + getData
-                        method: 'GET'
-                    ,   (res) ->
-                            res.on 'data', (data) -> chunks.push data
-                            res.on 'end', ->
-                                snippet = JSON.parse Buffer.concat(chunks).toString('utf8')
-                                resolve snippet.id
-                    )
-                req.on 'error', (error) ->
-                    reject error
-                    console.log 'Check failed with status: ' + res.statusCode
-                req.end()
-    )
+                getData = querystring.stringify(
+                    title: reqObj.title
+                    author: reqObj.author
+                    version: reqObj.version
+                )
+                ps.push new Promise (resolve, reject) ->
+                    chunks = []
+                    req = http.request(
+                            hostname: hostname
+                            port: port
+                            path: '/snippet?' + getData
+                            method: 'GET'
+                        ,   (res) ->
+                                res.on 'data', (data) -> chunks.push data
+                                res.on 'end', ->
+                                    snippet = JSON.parse Buffer.concat(chunks).toString('utf8')
+                                    resolve snippet.id
+                        )
+                    req.on 'error', (error) ->
+                        reject error
+                        console.log 'Check failed with status: ' + res.statusCode
+                    req.end()
+        ps
+
     checkRequires
     .catch (e) ->
         console.log 'Check requires failed...'
@@ -167,7 +170,7 @@ install: install = (conf, target) ->
 
     for filePath in requires then do (filePath = filePath) ->
         if (index = filePath.indexOf 'jsm') != -1
-            entryObj  = parseEntry (path.resolve entryDir, filePath[(index+4)..])
+            entryObj  = parseEntry (path.resolve entryDir, filePath.substr 3)
             filePath = (path.resolve entryDir, filePath)
             chunks = []
             if entryObj.author? and entryObj.title? and entryObj.version?

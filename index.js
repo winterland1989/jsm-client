@@ -140,55 +140,56 @@
       };
     },
     publish: function(conf, entry) {
-      var checkRequires, getData, hostname, index, port, ref, req, reqObj;
+      var checkRequires, hostname, port, ref;
       ref = url.parse(conf.repository), hostname = ref.hostname, port = ref.port;
       entry.keywords = JSON.stringify(parseKeywords(entry.content, entry.language));
       console.log("Entry keywords: " + entry.keywords);
       checkRequires = Promise.all((function() {
-        var i, len, ref1, results;
+        var getData, i, index, len, ps, ref1, req, reqObj;
+        ps = [];
         ref1 = parseRequires(entry.content, entry.language);
-        results = [];
         for (i = 0, len = ref1.length; i < len; i++) {
           req = ref1[i];
-          index = req.indexOf('jsm');
-          reqObj = parseEntry(req.slice(index + 4));
-          console.log("Checking " + reqObj.author + "/" + reqObj.title + "...");
-          getData = querystring.stringify({
-            title: reqObj.title,
-            author: reqObj.author,
-            version: reqObj.version
-          });
-          results.push(new Promise(function(resolve, reject) {
-            var chunks;
-            chunks = [];
-            req = http.request({
-              hostname: hostname,
-              port: port,
-              path: '/snippet?' + getData,
-              method: 'GET'
-            }, function(res) {
-              res.on('data', function(data) {
-                return chunks.push(data);
-              });
-              return res.on('end', function() {
-                var snippet;
-                snippet = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-                return resolve(snippet.id);
-              });
+          if ((index = req.indexOf('jsm')) !== -1) {
+            reqObj = parseEntry(req.substr(index + 3));
+            console.log("Checking " + reqObj.author + "/" + reqObj.title + "...");
+            getData = querystring.stringify({
+              title: reqObj.title,
+              author: reqObj.author,
+              version: reqObj.version
             });
-            req.on('error', function(error) {
-              reject(error);
-              return console.log('Check failed with status: ' + res.statusCode);
-            });
-            return req.end();
-          }));
+            ps.push(new Promise(function(resolve, reject) {
+              var chunks;
+              chunks = [];
+              req = http.request({
+                hostname: hostname,
+                port: port,
+                path: '/snippet?' + getData,
+                method: 'GET'
+              }, function(res) {
+                res.on('data', function(data) {
+                  return chunks.push(data);
+                });
+                return res.on('end', function() {
+                  var snippet;
+                  snippet = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                  return resolve(snippet.id);
+                });
+              });
+              req.on('error', function(error) {
+                reject(error);
+                return console.log('Check failed with status: ' + res.statusCode);
+              });
+              return req.end();
+            }));
+          }
         }
-        return results;
+        return ps;
       })());
       return checkRequires["catch"](function(e) {
         return console.log('Check requires failed...');
       }).then(function(ids) {
-        var chunks, postData;
+        var chunks, postData, req;
         console.log('Check requires finish...');
         entry.requires = JSON.stringify(ids);
         postData = querystring.stringify(entry);
@@ -241,7 +242,7 @@
         results.push((function(filePath) {
           var chunks, e, entryObj, ext, hostname, index, lan, port, ref, req, results1, succ;
           if ((index = filePath.indexOf('jsm')) !== -1) {
-            entryObj = parseEntry(path.resolve(entryDir, filePath.slice(index + 4)));
+            entryObj = parseEntry(path.resolve(entryDir, filePath.substr(3)));
             filePath = path.resolve(entryDir, filePath);
             chunks = [];
             if ((entryObj.author != null) && (entryObj.title != null) && (entryObj.version != null)) {
