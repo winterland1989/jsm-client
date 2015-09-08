@@ -60,5 +60,9 @@ commander
             console.log "Configure succeessful!"
             rl.close()
 
-commander.version '0.0.2'
-commander.parse process.argv
+commander.version '0.0.3'
+
+if process.argv.slice(2).length
+    commander.parse process.argv
+else
+    commander.outputHelp()

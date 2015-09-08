@@ -269,25 +269,23 @@
                       mtime = new Date(snippet.mtime);
                       fs.utimesSync(filePath, mtime, mtime);
                       install(conf, filePath);
-                      return console.log('Installing snippet: ' + filePath + ' succeessfully');
+                      return console.log("Installing snippet: " + filePath + " succeessfully");
                     } catch (_error) {
                       e = _error;
-                      return console.log("Write snippet failed: " + filePath);
+                      return console.log("Write snippet failed(" + e.message + "): " + filePath);
                     }
                   } else {
-                    console.log(res.statusCode);
-                    return console.log("Download snippet failed: " + filePath);
+                    return console.log("Download snippet failed(status" + res.statusCode + "): " + filePath);
                   }
                 });
               });
-              req.on('error', function(error) {
-                console.log('Get snippet failed:' + filePath);
+              req.on('error', function(e) {
+                console.log("Get snippet failed(" + e.message + "): " + filePath);
                 return console.log(error);
               });
               return req.end();
             } else {
-              console.log(entry);
-              return console.log("Parse entry name failed: " + filePath);
+              return console.log("Parse entry failed: " + filePath);
             }
           } else {
             filePath = path.resolve(entryDir, filePath);

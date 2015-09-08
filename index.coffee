@@ -192,23 +192,18 @@ install: install = (conf, target) ->
                                     mtime = new Date(snippet.mtime)
                                     fs.utimesSync filePath, mtime, mtime
                                     install conf, filePath
-                                    console.log 'Installing snippet: ' + filePath + ' succeessfully'
+                                    console.log "Installing snippet: #{filePath} succeessfully"
                                 catch e
-                                    console.log "Write snippet failed: " + filePath
+                                    console.log "Write snippet failed(#{e.message}): #{filePath}"
                             else
-                                console.log res.statusCode
-                                console.log "Download snippet failed: " + filePath
-
+                                console.log "Download snippet failed(status#{res.statusCode}): #{filePath}"
                 )
-                req.on 'error', (error) ->
-                    console.log 'Get snippet failed:' + filePath
+                req.on 'error', (e) ->
+                    console.log "Get snippet failed(#{e.message}): #{filePath}"
                     console.log error
                 req.end()
 
-            else
-                console.log entry
-                console.log "Parse entry name failed: " + filePath
-
+            else console.log "Parse entry failed: " + filePath
 
         else
             filePath = (path.resolve entryDir, filePath)
@@ -222,7 +217,3 @@ install: install = (conf, target) ->
                         console.log e
             else
                 install conf, filePath
-
-
-
-

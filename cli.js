@@ -73,8 +73,12 @@
     });
   });
 
-  commander.version('0.0.2');
+  commander.version('0.0.3');
 
-  commander.parse(process.argv);
+  if (process.argv.slice(2).length) {
+    commander.parse(process.argv);
+  } else {
+    commander.outputHelp();
+  }
 
 }).call(this);
