@@ -1,5 +1,4 @@
 # editor temp files
-
 *#
 .#*
 *~
@@ -9,8 +8,8 @@
 TAGS
 tags
 
-# stack artifacts
-/.stack-work/
-
-#node_modules
+# node_modules
 **/node_modules
+
+# compiled js
+*.js

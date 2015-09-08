@@ -1,6 +1,6 @@
 {
   "name": "jsm-client",
-  "version": "1.0.0",
+  "version": "0.0.2",
   "description": "Client for jsm, a javascript snippet manager.",
   "main": "index.js",
   "scripts": {
@@ -15,6 +15,7 @@
   "author": "winterland1989",
   "license": "MIT",
   "dependencies": {
+    "bluebird": "^2.9.34",
     "command-line-args": "^1.0.0",
     "commander": "^2.8.1",
     "fs-extra": "^0.24.0"

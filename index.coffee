@@ -3,6 +3,7 @@ http = require 'http'
 querystring = require 'querystring'
 url = require 'url'
 fs = require 'fs-extra'
+Promise = require 'bluebird'
 
 CONFIG_FILE_NAME = '.jsm.json'
 DEFAULT_REPOSITORY = 'http://jsm.winterland.me'
@@ -15,7 +16,11 @@ extMap =
     '.ls': 'livescript'
     '.coffee': 'coffeescript'
     '.js': 'javascript'
-    '': undefined
+
+commentStartMap =
+    'livescript': '#'
+    'coffeescript': '#'
+    'javascript': '//'
 
 getExt = (language) ->
     for ext, lan of extMap
@@ -23,19 +28,42 @@ getExt = (language) ->
 
     return ''
 
+parseKeywords = (content, language) ->
+    keywordMark = "#{commentStartMap[language]}-jsm-keywords:"
+    for line in content.split '\n'
+        if (line.indexOf keywordMark) == 0
+            keywords = line.substr(keywordMark.length).split ' '
+            break
+    keywords ?= []
+    keywords.filter (word) -> word.match /\w+/g
+
+parseRequires = (content, language) ->
+    requires = []
+    switch language
+        when 'javascript'
+            content.replace /\brequire\s*\(\s*(["'])([^"'\s\)]+)\1\s*\)/g, (match, quote, path) ->
+                requires.push path
+                match
+        when 'coffeescript'
+            content.replace /\brequire\s*(["'])([^"'\s\)]+)\1\s*/g, (match, quote, path) ->
+                requires.push path
+                match
+        when 'livescript'
+            content.replace /\brequire[!?]\s*(["'])([^"'\s\)]+)\1\s*/g, (match, quote, path) ->
+                requires.push path
+                match
+    requires
+
 module.exports =
 
 readJsmClientConfig: ->
     if (fs.existsSync configFile)
         f = fs.readFileSync configFile, encoding: 'utf8'
         conf = JSON.parse f
-        if conf.repository and conf.username and conf.password then conf
-        else throw new Error "remove #{configFile} and restart..."
-
+        if conf.repository then conf
+        else throw new Error "Parse config failed..."
     else
         repository: DEFAULT_REPOSITORY
-        username: ''
-        pwdHash: ''
 
 
 writeJsmClientConfig: (conf) ->
@@ -46,70 +74,96 @@ parseEntry: parseEntry = (filePath) ->
     filePath = path.normalize filePath
     ext = path.extname filePath
     base = path.basename filePath, ext
-
-    author = (path.basename(path.dirname filePath))
+    dir = path.basename(path.dirname filePath)
 
     titleMatch = base.match /^([a-zA-Z]+)/g
     title = if titleMatch? then titleMatch[0] else throw new Error "Parse entry name failed: " + filePath
 
     versionMatch = base.match /([0-9]+)$/g
     version = if versionMatch? then parseInt versionMatch[0] else 0
+
+    authorMatch = dir.match /^(\w+)$/g
+    author = if authorMatch? then authorMatch[0] else undefined
+
+
     title: title
     version: version
     author: author
-    language: extMap[ext]
+    language: if ext == '' then undefined else extMap[ext]
 
 
 publish: (conf, entry) ->
-    entry.pwdHash = conf.pwdHash
-    postData = querystring.stringify entry
     {hostname, port} = url.parse conf.repository
-    chunks = []
-    req = http.request(
-        hostname: hostname
-        port: port
-        path: '/snippet'
-        method: 'POST'
-        headers:
-            'Content-Type': 'application/x-www-form-urlencoded'
-            'Content-Length': postData.length
-    ,   (res) ->
-            res.on 'data', (data) -> chunks.push data
-            res.on 'end', ->
-                try
-                    snippet = JSON.parse Buffer.concat(chunks).toString('utf8')
-                    console.log "#{snippet.author}/#{snippet.title + snippet.version}
-                        (revision#{snippet.revision}) published succeessful!"
-                catch e
-                    console.log "publish failed!"
+    entry.keywords = JSON.stringify (parseKeywords entry.content, entry.language)
+    console.log "Entry keywords: #{entry.keywords}"
+
+    checkRequires = Promise.all(
+        for req in (parseRequires entry.content, entry.language)
+            index = req.indexOf 'jsm'
+            reqObj  = parseEntry req[(index+4)..]
+            console.log "Checking #{reqObj.author}/#{reqObj.title}..."
+
+            getData = querystring.stringify
+                title: reqObj.title
+                author: reqObj.author
+                version: reqObj.version
+            new Promise (resolve, reject) ->
+                chunks = []
+                req = http.request(
+                        hostname: hostname
+                        port: port
+                        path: '/snippet?' + getData
+                        method: 'GET'
+                    ,   (res) ->
+                            res.on 'data', (data) -> chunks.push data
+                            res.on 'end', ->
+                                snippet = JSON.parse Buffer.concat(chunks).toString('utf8')
+                                resolve snippet.id
+                    )
+                req.on 'error', (error) ->
+                    reject error
+                    console.log 'Check failed with status: ' + res.statusCode
+                req.end()
     )
-    req.on 'error', (error) ->
-        console.log 'Publish failed!:'
-        console.log error
-    req.write postData
-    req.end()
+    checkRequires
+    .catch (e) ->
+        console.log 'Check requires failed...'
+    .then (ids) ->
+        console.log 'Check requires finish...'
+        entry.requires = JSON.stringify ids
+        postData = querystring.stringify entry
+        chunks = []
+        req = http.request(
+                hostname: hostname
+                port: port
+                path: '/snippet'
+                method: 'POST'
+                headers:
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                    'Content-Length': postData.length
+            ,   (res) ->
+                    res.on 'data', (data) -> chunks.push data
+                    res.on 'end',  ->
+                        if res.statusCode == 200
+                            console.log 'Publish finish with status: 200'
+                            snippet = JSON.parse Buffer.concat(chunks).toString('utf8')
+                            console.log 'Revision ' + snippet.revision + ' at ' + snippet.mtime
+                        else console.log ('Publish failed with status: ' + res.statusCode)
+            )
+        req.on 'error', (error) -> console.log ('Publish failed with status: ' + res.statusCode)
+        req.write postData
+        req.end()
 
 
-install: install = (conf, entry) ->
-    entryDir = path.dirname entry
-    entryContent = ''
+install: install = (conf, target) ->
+    entryDir = path.dirname target
+
+    entryContent = fs.readFileSync target, 'utf8'
     requires = []
 
-    try entryContent = fs.readFileSync entry, 'utf8'
-
-    switch extMap[path.extname entry]
-        when 'javascript'
-            entryContent.replace /\brequire\s*\(\s*(["'])([^"'\s\)]+)\1\s*\)/g, (match, quote, path) ->
-                requires.push path
-                match
-        when 'coffeescript'
-            entryContent.replace /\brequire\s*(["'])([^"'\s\)]+)\1\s*/g, (match, quote, path) ->
-                requires.push path
-                match
-        when 'livescript'
-            entryContent.replace /\brequire[!?]\s*(["'])([^"'\s\)]+)\1\s*/g, (match, quote, path) ->
-                requires.push path
-                match
+    for language of commentStartMap
+        requires = parseRequires entryContent, language
+        if requires.length >0 then break
 
     for filePath in requires then do (filePath = filePath) ->
         if (index = filePath.indexOf 'jsm') != -1
