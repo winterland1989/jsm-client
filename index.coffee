@@ -94,7 +94,21 @@ parseEntry: parseEntry = (filePath) ->
 
 publish: (conf, entry) ->
     {hostname, port} = url.parse conf.repository
-    entry.keywords = JSON.stringify (parseKeywords entry.content, entry.language)
+
+    jsmKeywords = (parseKeywords entry.content, entry.language)
+
+    transformedTitle = ''
+    for c in entry.title
+        if  'A' <= c <= 'Z' then transformedTitle += ',' + c.toLowerCase()
+        else transformedTitle += c
+    transformedTitle
+
+    titleKeywords = (transformedTitle.split ',').filter (w) -> w != ''
+
+    if titleKeywords.length == 1 then jsmKeywords.push entry.title
+    else jsmKeywords = jsmKeywords.concat titleKeywords
+
+    entry.keywords = JSON.stringify jsmKeywords
     console.log "Entry keywords: #{entry.keywords}"
 
     checkRequires = Promise.all do ->

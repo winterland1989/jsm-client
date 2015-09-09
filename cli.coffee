@@ -1,5 +1,5 @@
 commander = require 'commander'
-jsm = require './index.js'
+jsm = require './index.coffee'
 readline = require 'readline'
 fs = require 'fs'
 crypto = require 'crypto'
@@ -60,7 +60,7 @@ commander
             console.log "Configure succeessful!"
             rl.close()
 
-commander.version '0.0.3'
+commander.version '0.0.4'
 
 if process.argv.slice(2).length
     commander.parse process.argv
