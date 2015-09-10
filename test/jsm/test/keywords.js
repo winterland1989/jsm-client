@@ -1,2 +1,0 @@
-
-//-jsm-keywords: test keyword

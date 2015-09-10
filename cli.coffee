@@ -1,9 +1,10 @@
 commander = require 'commander'
 jsm = require './index.coffee'
 readline = require 'readline'
-fs = require 'fs'
+fs = require 'fs-extra'
 crypto = require 'crypto'
 path = require 'path'
+
 
 conf = jsm.readJsmClientConfig()
 
@@ -12,8 +13,8 @@ commander
     .alias 'i'
     .description 'Install snippets for given entry files, omit entries default to search jsm.json.'
     .action (entries) ->
-        for entry in entries
-            jsm.install conf, path.resolve(process.cwd(), entry)
+        for entryPath in entries
+            jsm.install conf, path.resolve(process.cwd(), entryPath)
 
 commander
     .command 'publish [entry]'
@@ -38,8 +39,7 @@ commander
                         console.log "Pulish #{entry.title + entry.version}
                             to #{entry.author}/#{entry.title + entry.version}..."
 
-                        entry.content = fs.readFileSync entryPath, encoding: 'utf8'
-                        jsm.publish conf, entry
+                        jsm.publish conf, entry, path.resolve(process.cwd(), entryPath)
 
                     else
                         console.log "Empty password..."

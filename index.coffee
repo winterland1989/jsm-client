@@ -4,6 +4,8 @@ querystring = require 'querystring'
 url = require 'url'
 fs = require 'fs-extra'
 Promise = require 'bluebird'
+webpack = require 'webpack'
+MemoryFS = require "memory-fs"
 
 CONFIG_FILE_NAME = '.jsm.json'
 DEFAULT_REPOSITORY = 'http://jsm.winterland.me'
@@ -37,22 +39,44 @@ parseKeywords = (content, language) ->
     keywords ?= []
     keywords.filter (word) -> word.match /\w+/g
 
-parseRequires = (content, language) ->
-    requires = []
-    switch language
-        when 'javascript'
-            content.replace /\brequire\s*\(\s*(["'])([^"'\s\)]+)\1\s*\)/g, (match, quote, path) ->
-                requires.push path
-                match
-        when 'coffeescript'
-            content.replace /\brequire\s*(["'])([^"'\s\)]+)\1\s*/g, (match, quote, path) ->
-                requires.push path
-                match
-        when 'livescript'
-            content.replace /\brequire[!?]\s*(["'])([^"'\s\)]+)\1\s*/g, (match, quote, path) ->
-                requires.push path
-                match
-    requires
+parseRequires = (entryPath) ->
+    new Promise (resolve, reject) ->
+        fsm = new MemoryFS()
+        c = webpack(
+            entry: entryPath
+            output:
+                path: '/dev/null'
+                filename: "null.js"
+
+            module:
+                loaders: [
+                    { test: /\.coffee$/, loader: "coffee-loader" },
+                    { test: /\.(coffee\.md|litcoffee)$/, loader: "coffee-loader?literate" }
+                    { test: /\.ls/, loader: "livescript-loader" },
+                ]
+            resolve:
+                extensions:
+                    ["", ".json", ".js", ".coffee", ".ls"]
+
+        )
+        c.outputFileSystem = fsm
+        c.run (err, status) ->
+            if err then reject err
+            else resolve(
+                existRequires: status.compilation.fileDependencies.filter((p) -> p != entryPath)
+                missingRequires: mergeMissingDependencies(status.compilation.missingDependencies)
+            )
+
+underJsm = (filePath) -> 'jsm' in (filePath.split path.sep)
+
+mergeMissingDependencies = (missings) ->
+    removeExt = for filePath in missings
+        {dir, name} = path.parse filePath
+        path.join(dir, name)
+
+    result = []
+    for filePath in removeExt when filePath not in result then result.push filePath
+    result
 
 module.exports =
 
@@ -92,7 +116,10 @@ parseEntry: parseEntry = (filePath) ->
     language: if ext == '' then undefined else extMap[ext]
 
 
-publish: (conf, entry) ->
+publish: (conf, entry, entryPath) ->
+
+    entry.content = fs.readFileSync entryPath, encoding: 'utf8'
+
     {hostname, port} = url.parse conf.repository
 
     jsmKeywords = (parseKeywords entry.content, entry.language)
@@ -111,19 +138,22 @@ publish: (conf, entry) ->
     entry.keywords = JSON.stringify jsmKeywords
     console.log "Entry keywords: #{entry.keywords}"
 
-    checkRequires = Promise.all do ->
-        ps = []
-        for req in (parseRequires entry.content, entry.language)
-            if (index = req.indexOf 'jsm') != -1
-                reqObj  = parseEntry (req.substr(index + 3))
-                console.log "Checking #{reqObj.author}/#{reqObj.title}..."
-
+    parseRequires entryPath
+    .then ({existRequires, missingRequires}) ->
+        allRequires = (existRequires.concat missingRequires)
+        console.log "Find all requirements:"
+        for req in allRequires then console.log req
+        Promise.all(
+            for req in allRequires then do (req=req) ->
+                reqObj  = parseEntry req
+                reqTitle = reqObj.author + '/' +reqObj.title
+                console.log "Checking #{reqTitle}..."
                 getData = querystring.stringify(
                     title: reqObj.title
                     author: reqObj.author
                     version: reqObj.version
                 )
-                ps.push new Promise (resolve, reject) ->
+                new Promise (resolve, reject) ->
                     chunks = []
                     req = http.request(
                             hostname: hostname
@@ -131,106 +161,107 @@ publish: (conf, entry) ->
                             path: '/snippet?' + getData
                             method: 'GET'
                         ,   (res) ->
-                                res.on 'data', (data) -> chunks.push data
-                                res.on 'end', ->
-                                    snippet = JSON.parse Buffer.concat(chunks).toString('utf8')
-                                    resolve snippet.id
-                        )
-                    req.on 'error', (error) ->
+                                if res.statusCode == 200
+                                    res.on 'data', (data) -> chunks.push data
+                                    res.on 'end', ->
+                                        snippet = JSON.parse Buffer.concat(chunks).toString('utf8')
+                                        if snippet.id
+                                            console.log "Checking #{reqTitle} OK..."
+                                            resolve snippet.id
+                                        else
+                                            console.log "Checking #{reqTitle} Fail..."
+                                            reject new Error 'Module id error'
+                                else
+                                    console.log "Checking #{reqTitle} Fail with: " + res.statusCode
+                                    reject "Checking #{reqTitle} Failed..."
+                    )
+                    req.on 'error', onErr = (error) ->
                         reject error
-                        console.log 'Check failed with status: ' + res.statusCode
                     req.end()
-        ps
-
-    checkRequires
-    .catch (e) ->
-        console.log 'Check requires failed...'
-    .then (ids) ->
-        console.log 'Check requires finish...'
-        entry.requires = JSON.stringify ids
-        postData = querystring.stringify entry
-        chunks = []
-        req = http.request(
-                hostname: hostname
-                port: port
-                path: '/snippet'
-                method: 'POST'
-                headers:
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                    'Content-Length': postData.length
-            ,   (res) ->
-                    res.on 'data', (data) -> chunks.push data
-                    res.on 'end',  ->
-                        if res.statusCode == 200
-                            console.log 'Publish finish with status: 200'
-                            snippet = JSON.parse Buffer.concat(chunks).toString('utf8')
-                            console.log 'Revision ' + snippet.revision + ' at ' + snippet.mtime
-                        else console.log ('Publish failed with status: ' + res.statusCode)
-            )
-        req.on 'error', (error) -> console.log ('Publish failed with status: ' + res.statusCode)
-        req.write postData
-        req.end()
-
-
-install: install = (conf, target) ->
-    entryDir = path.dirname target
-
-    entryContent = fs.readFileSync target, 'utf8'
-    requires = []
-
-    for language of commentStartMap
-        requires = parseRequires entryContent, language
-        if requires.length >0 then break
-
-    for filePath in requires then do (filePath = filePath) ->
-        if (index = filePath.indexOf 'jsm') != -1
-            entryObj  = parseEntry (path.resolve entryDir, filePath.substr 3)
-            filePath = (path.resolve entryDir, filePath)
+        )
+    .then(
+        (ids) ->
+            console.log 'Check requires finish...'
+            entry.requires = JSON.stringify ids
+            postData = querystring.stringify entry
             chunks = []
-            if entryObj.author? and entryObj.title? and entryObj.version?
-                delete entryObj.language
-                {hostname, port} = url.parse conf.repository
-                req = http.request(
+            req = http.request(
                     hostname: hostname
                     port: port
-                    path: '/snippet?' + querystring.stringify entryObj
-                    method: 'GET'
+                    path: '/snippet'
+                    method: 'POST'
+                    headers:
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                        'Content-Length': postData.length
                 ,   (res) ->
-                        res.on 'data', (data) ->
-                            chunks.push data
-                        res.on 'end', ->
+                        res.on 'data', (data) -> chunks.push data
+                        res.on 'end',  ->
                             if res.statusCode == 200
-                                try
-                                    snippet = JSON.parse Buffer.concat(chunks).toString('utf8')
-                                    if (path.extname filePath) == ''
-                                        filePath += getExt snippet.language
-                                    fs.ensureFileSync filePath
-                                    fs.writeFileSync filePath, snippet.content
-                                    mtime = new Date(snippet.mtime)
-                                    fs.utimesSync filePath, mtime, mtime
-                                    install conf, filePath
-                                    console.log "Installing snippet: #{filePath} succeessfully"
-                                catch e
-                                    console.log "Write snippet failed(#{e.message}): #{filePath}"
-                            else
-                                console.log "Download snippet failed(status#{res.statusCode}): #{filePath}"
+                                console.log 'Publish finish with status: 200'
+                                snippet = JSON.parse Buffer.concat(chunks).toString('utf8')
+                                console.log 'Revision ' + snippet.revision + ' at ' + snippet.mtime
+                            else console.log ('Publish failed with status: ' + res.statusCode)
                 )
-                req.on 'error', (e) ->
-                    console.log "Get snippet failed(#{e.message}): #{filePath}"
-                    console.log error
-                req.end()
+            req.on 'error', (error) -> console.log ('Publish failed with status: ' + res.statusCode)
+            req.write postData
+            req.end()
 
-            else console.log "Parse entry failed: " + filePath
+    ,
+        (e) -> console.log e
+    )
 
-        else
-            filePath = (path.resolve entryDir, filePath)
-            if (path.extname filePath) == ''
-                succ = 0
-                for ext, lan of extMap when lan?
-                    try
-                        if fs.existsSync filePath + ext
-                            install conf, filePath + ext
-                    catch e
-                        console.log e
-            else
-                install conf, filePath
+
+install: install = (conf, entryPath) ->
+    entryDir = path.dirname entryPath
+
+    parseRequires(entryPath)
+    .then ({existRequires, missingRequires}) ->
+        for filePath in missingRequires then do (filePath = filePath) ->
+            if underJsm filePath
+                entryObj  = parseEntry filePath
+                chunks = []
+                if entryObj.author? and entryObj.title? and entryObj.version?
+                    {hostname, port} = url.parse conf.repository
+                    if entryObj.language != undefined
+                        console.log  "Please don't and extensions to requires:
+                                #{entryObj.author}/#{ entryObj.title}.??}"
+                        return
+                    else delete entryObj.language
+
+                    req = http.request(
+                        hostname: hostname
+                        port: port
+                        path: '/snippet?' + querystring.stringify entryObj
+                        method: 'GET'
+                    ,   (res) ->
+                            res.on 'data', (data) ->
+                                chunks.push data
+                            res.on 'end', ->
+                                if res.statusCode == 200
+                                    try
+                                        snippet = JSON.parse Buffer.concat(chunks).toString('utf8')
+                                        if (path.extname filePath) == ''
+                                            filePath += getExt snippet.language
+
+                                        fs.ensureFileSync filePath
+
+                                        mtime = new Date(snippet.mtime)
+
+                                        fs.writeFileSync filePath, snippet.content
+                                        fs.utimesSync filePath, mtime, mtime
+
+                                        console.log "Installing snippet: #{filePath} succeessfully"
+
+                                        install(conf, entryPath)
+
+                                    catch e
+                                        console.log "Write snippet failed(#{e.message}): #{filePath}"
+                                else
+                                    console.log "Download snippet failed(status#{res.statusCode}): #{filePath}"
+                    )
+                    req.on 'error', (e) ->
+                        console.log "Get snippet failed(#{e.message}): #{filePath}"
+                        console.log error
+                    req.end()
+
+                else console.log "Parse entry failed: " + filePath
