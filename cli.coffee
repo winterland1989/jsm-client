@@ -4,6 +4,7 @@ readline = require 'readline'
 fs = require 'fs-extra'
 crypto = require 'crypto'
 path = require 'path'
+packageJson = require './package.json'
 
 
 conf = jsm.readJsmClientConfig()
@@ -60,7 +61,7 @@ commander
             console.log "Configure succeessful!"
             rl.close()
 
-commander.version '0.0.4'
+commander.version packageJson.version
 
 if process.argv.slice(2).length
     commander.parse process.argv

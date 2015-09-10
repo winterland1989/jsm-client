@@ -212,7 +212,6 @@ publish: (conf, entry, entryPath) ->
 
 
 install: install = (conf, entryPath) ->
-    entryDir = path.dirname entryPath
 
     parseRequires(entryPath)
     .then ({existRequires, missingRequires}) ->
@@ -265,3 +264,5 @@ install: install = (conf, entryPath) ->
                     req.end()
 
                 else console.log "Parse entry failed: " + filePath
+
+        for filePath in existRequires then install(conf, filePath)
