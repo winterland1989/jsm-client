@@ -132,8 +132,8 @@ publish: (conf, entry, entryPath) ->
 
     titleKeywords = (transformedTitle.split ',').filter (w) -> w != ''
 
-    if titleKeywords.length == 1 then jsmKeywords.push entry.title
-    else jsmKeywords = jsmKeywords.concat titleKeywords
+    if titleKeywords.length == 1 then jsmKeywords.push entry.title.toLowerCase()
+    else jsmKeywords = (jsmKeywords.concat titleKeywords).map (w) -> w.toLowerCase()
 
     entry.keywords = JSON.stringify jsmKeywords
     console.log "Entry keywords: #{entry.keywords}"
