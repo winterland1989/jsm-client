@@ -12,7 +12,7 @@ conf = jsm.readJsmClientConfig()
 commander
     .command 'install [entries...]'
     .alias 'i'
-    .description 'Install snippets for given entry files, omit entries default to search jsm.json.'
+    .description 'Install snippets for given entry files.'
     .action (entries) ->
         for entryPath in entries
             jsm.install conf, path.resolve(process.cwd(), entryPath)
@@ -20,7 +20,7 @@ commander
 commander
     .command 'publish [entry]'
     .alias 'p'
-    .description 'Publish snippet, version default to 0 if entry doesn\'t end with version numbers.'
+    .description 'Publish given snippet.'
     .action (entryPath) ->
         if fs.existsSync entryPath
 
@@ -30,20 +30,23 @@ commander
                 input: process.stdin
                 output: process.stdout
 
-            rl.question "Username#{if entry.author? then "(default: #{entry.author}):" else ':'}", (author) ->
-                entry.author = author if author
+            rl.question "Version(default:#{entry.version})", (version) ->
+                v = parseInt version
+                entry.version = version if v >= 0 and typeof v == 'number'
+                rl.question "Username#{if entry.author? then "(default: #{entry.author}):" else ':'}", (author) ->
+                    entry.author = author if author
 
-                rl.question "Password:", (password) ->
-                    rl.close()
-                    if password != ""
-                        entry.password = password
-                        console.log "Pulish #{entry.title + entry.version}
-                            to #{entry.author}/#{entry.title + entry.version}..."
+                    rl.question "Password:", (password) ->
+                        rl.close()
+                        if password != ""
+                            entry.password = password
+                            console.log "Pulish #{entry.title + entry.version}
+                                to #{entry.author}/#{entry.title + entry.version}..."
 
-                        jsm.publish conf, entry, path.resolve(process.cwd(), entryPath)
+                            jsm.publish conf, entry, path.resolve(process.cwd(), entryPath)
 
-                    else
-                        console.log "Empty password..."
+                        else
+                            console.log "Empty password..."
         else
             console.log "Entry doesn't exist..."
 
