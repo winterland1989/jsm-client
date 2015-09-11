@@ -170,13 +170,12 @@ publish: (conf, entry, entryPath) ->
                                             resolve snippet.id
                                         else
                                             console.log "Checking #{reqTitle} Fail..."
-                                            reject new Error 'Module id error'
+                                            reject 'Module id error'
                                 else
                                     console.log "Checking #{reqTitle} Fail with: " + res.statusCode
                                     reject "Checking #{reqTitle} Failed..."
                     )
-                    req.on 'error', onErr = (error) ->
-                        reject error
+                    req.on 'error', onErr = (error) -> reject error
                     req.end()
         )
     .then(
@@ -202,7 +201,7 @@ publish: (conf, entry, entryPath) ->
                                 console.log 'Revision ' + snippet.revision + ' at ' + snippet.mtime
                             else console.log ('Publish failed with status: ' + res.statusCode)
                 )
-            req.on 'error', (error) -> console.log ('Publish failed with status: ' + res.statusCode)
+            req.on 'error', (error) -> console.log ('Network error...')
             req.write postData
             req.end()
 
