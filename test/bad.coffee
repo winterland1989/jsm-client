@@ -1,2 +1,2 @@
 require './jsm/base/zepto1'
-require './jsm/testModule/testName'
+require './jsm/testModule/notexist'

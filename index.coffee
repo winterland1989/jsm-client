@@ -39,11 +39,11 @@ parseKeywords = (content, language) ->
     keywords ?= []
     keywords.filter (word) -> word.match /\w+/g
 
-parseRequires = (entryPath) ->
+parseRequires = (entryPaths) ->
     new Promise (resolve, reject) ->
         fsm = new MemoryFS()
         c = webpack(
-            entry: entryPath
+            entry: entryPaths
             output:
                 path: '/dev/null'
                 filename: "null.js"
@@ -63,24 +63,31 @@ parseRequires = (entryPath) ->
         c.run (err, status) ->
             if err then reject err
             else resolve(
-                existRequires: status.compilation.fileDependencies.filter((p) -> p != entryPath)
-                missingRequires: mergeMissingDependencies(status.compilation.missingDependencies)
+                existRequires: removeDuplicatedPath(
+                    status.compilation.fileDependencies.filter((p) -> p not in entryPaths)
+                )
+                missingRequires: removeDuplicatedPath(status.compilation.missingDependencies)
+                existRequiresWithExt: (
+                    status.compilation.fileDependencies.filter((p) -> p not in entryPaths)
+                )
+
             )
 
-underJsm = (filePath) -> 'jsm' in (filePath.split path.sep)
 
-mergeMissingDependencies = (missings) ->
-    removeExt = for filePath in missings
+removeDuplicatedPath = (paths) ->
+    removeExt = for filePath in paths
         {dir, name} = path.parse filePath
         path.join(dir, name)
 
     result = []
-    for filePath in removeExt when filePath not in result then result.push filePath
+    for filePath in removeExt
+        if (filePath not in result) and ((path.extname filePath) == '')
+            result.push filePath
     result
 
-module.exports =
 
-readJsmClientConfig: ->
+
+readJsmClientConfig = ->
     if (fs.existsSync configFile)
         f = fs.readFileSync configFile, encoding: 'utf8'
         conf = JSON.parse f
@@ -90,11 +97,11 @@ readJsmClientConfig: ->
         repository: DEFAULT_REPOSITORY
 
 
-writeJsmClientConfig: (conf) ->
+writeJsmClientConfig = (conf) ->
     f = fs.writeFileSync configFile, (JSON.stringify conf) , encoding: 'utf8'
 
 
-parseEntry: parseEntry = (filePath) ->
+parseEntry = parseEntry = (filePath) ->
     filePath = path.normalize filePath
     ext = path.extname filePath
     base = path.basename filePath, ext
@@ -116,7 +123,7 @@ parseEntry: parseEntry = (filePath) ->
     language: if ext == '' then undefined else extMap[ext]
 
 
-publish: (conf, entry, entryPath) ->
+publish = (conf, entry, entryPath) ->
 
     entry.content = fs.readFileSync entryPath, encoding: 'utf8'
 
@@ -138,7 +145,7 @@ publish: (conf, entry, entryPath) ->
     entry.keywords = JSON.stringify jsmKeywords
     console.log "Entry keywords: #{entry.keywords}"
 
-    parseRequires entryPath
+    parseRequires [entryPath]
     .then ({existRequires, missingRequires}) ->
         allRequires = (existRequires.concat missingRequires)
         console.log "Find all requirements:"
@@ -175,7 +182,7 @@ publish: (conf, entry, entryPath) ->
                                     console.log "Checking #{reqTitle} Fail with: " + res.statusCode
                                     reject "Checking #{reqTitle} Failed..."
                     )
-                    req.on 'error', onErr = (error) -> reject error
+                    req.on 'error', onErr = (e) -> reject e
                     req.end()
         )
     .then(
@@ -201,7 +208,7 @@ publish: (conf, entry, entryPath) ->
                                 console.log 'Revision ' + snippet.revision + ' at ' + snippet.mtime
                             else console.log ('Publish failed with status: ' + res.statusCode)
                 )
-            req.on 'error', (error) -> console.log ('Network error...')
+            req.on 'error', (e) -> console.log ('Network error...')
             req.write postData
             req.end()
 
@@ -209,23 +216,108 @@ publish: (conf, entry, entryPath) ->
         (e) -> console.log e
     )
 
+deprecate = (conf, entryObj) ->
+    {hostname, port} = url.parse conf.repository
+    delete entryObj.language
+    req = http.request(
+        hostname: hostname
+        port: port
+        path: '/snippet?' + querystring.stringify entryObj
+        method: 'DELETE'
+    ,   (res) ->
 
-install: install = (conf, entryPath) ->
+            res.on 'data', (data) ->
 
-    parseRequires(entryPath)
+            res.on 'end', ->
+                if res.statusCode == 200
+                    console.log "#{entryObj.author}/#{entryObj.title}#{entryObj.version} DEPRECATED"
+                else
+                    console.log "DEPRECATED Failed with status: #{res.statusCode}"
+    )
+    req.on 'error', -> console.log "Network failed"
+    req.end()
+
+
+failedPath = []
+underJsm = (filePath) -> 'jsm' in (filePath.split path.sep)
+
+install = (conf, entryPaths) ->
+    parseRequires(entryPaths)
     .then ({existRequires, missingRequires}) ->
-        for filePath in missingRequires then do (filePath = filePath) ->
+        Promise.all(
+            for filePath in missingRequires then do (filePath = filePath) ->
+                if filePath in failedPath then Promise.resolve filePath
+                else new Promise (resolve, reject) ->
+                    if underJsm filePath
+                        entryObj  = parseEntry filePath
+                        chunks = []
+                        if entryObj.author? and entryObj.title? and entryObj.version?
+                            {hostname, port} = url.parse conf.repository
+                            delete entryObj.language
+
+                            req = http.request(
+                                hostname: hostname
+                                port: port
+                                path: '/snippet?' + querystring.stringify entryObj
+                                method: 'GET'
+                            ,   (res) ->
+                                    res.on 'data', (data) ->
+                                        chunks.push data
+                                    res.on 'end', ->
+                                        if res.statusCode == 200
+                                            try
+                                                snippet = JSON.parse Buffer.concat(chunks).toString('utf8')
+                                                if (path.extname filePath) == ''
+                                                    filePath += getExt snippet.language
+
+                                                fs.ensureFileSync filePath
+
+                                                mtime = new Date(snippet.mtime)
+
+                                                fs.writeFileSync filePath, snippet.content
+                                                fs.utimesSync filePath, mtime, mtime
+
+                                                console.log "Installing snippet: #{filePath} succeessfully"
+                                                resolve filePath
+
+                                            catch e
+                                                console.log "Install snippet failed(#{e.message}): #{filePath}"
+                                                resolve filePath
+                                        else
+                                            console.log "Download snippet failed(status#{res.statusCode}): #{filePath}"
+                                            failedPath.push filePath
+                                            resolve filePath
+                            )
+                            req.on 'error', (e) ->
+                                console.log "Get snippet failed(#{e.message}): #{filePath}"
+                                console.log ('Network error...')
+                                resolve filePath
+
+                            req.end()
+
+                        else console.log "Parse entry failed: " + filePath
+        )
+        .then (allPaths) ->
+            missingRequires = missingRequires.filter (p) -> p not in allPaths
+            if missingRequires.length > 0
+                install(conf, entryPaths)
+
+update = (conf, entryPaths) ->
+    parseRequires entryPaths
+    .then ({existRequiresWithExt, missingRequires}) ->
+        if missingRequires.length
+            console.log "Missing requires found: "
+            for p in missingRequires then console.log p
+            console.log "Try run jsm i | install before update"
+
+
+        for filePath in existRequiresWithExt then do (filePath = filePath) ->
             if underJsm filePath
                 entryObj  = parseEntry filePath
                 chunks = []
                 if entryObj.author? and entryObj.title? and entryObj.version?
                     {hostname, port} = url.parse conf.repository
-                    if entryObj.language != undefined
-                        console.log  "Please don't and extensions to requires:
-                                #{entryObj.author}/#{ entryObj.title}.??}"
-                        return
-                    else delete entryObj.language
-
+                    delete entryObj.language
                     req = http.request(
                         hostname: hostname
                         port: port
@@ -238,30 +330,56 @@ install: install = (conf, entryPath) ->
                                 if res.statusCode == 200
                                     try
                                         snippet = JSON.parse Buffer.concat(chunks).toString('utf8')
-                                        if (path.extname filePath) == ''
-                                            filePath += getExt snippet.language
 
-                                        fs.ensureFileSync filePath
+                                        oldMtime = (fs.statSync filePath).mtime
 
-                                        mtime = new Date(snippet.mtime)
+                                        {dir, name, ext: oldExtname} = path.parse filePath
+                                        newExtname = (getExt snippet.language)
 
-                                        fs.writeFileSync filePath, snippet.content
-                                        fs.utimesSync filePath, mtime, mtime
+                                        if oldExtname != newExtname
+                                            console.log 'Language change found:'
+                                            console.log filePath
+                                            fs.removeSync filePath
+                                            console.log 'Remove old snippet done'
+                                            filePath = path.join(dir, name) + (getExt snippet.language)
 
-                                        console.log "Installing snippet: #{filePath} succeessfully"
+                                        newMtime = new Date(snippet.mtime)
 
-                                        install(conf, entryPath)
+                                        if Math.abs(Number(newMtime) - Number(oldMtime)) > 1000
+
+                                            fs.writeFileSync filePath, snippet.content
+                                            fs.utimesSync filePath, newMtime, newMtime
+
+                                            console.log "Update snippet: #{filePath} succeessfully @ revision#{snippet.revision}"
+                                        else
+                                            console.log "No update found, skip snippet: #{filePath}"
+
+                                        if snippet.deprecated
+                                            console.log "Snippet: #{filePath} DEPRECATED !!!"
 
                                     catch e
-                                        console.log "Write snippet failed(#{e.message}): #{filePath}"
+                                        console.log "Update snippet failed(#{e.message}): #{filePath}"
                                 else
                                     console.log "Download snippet failed(status#{res.statusCode}): #{filePath}"
+                                    failedPath.push filePath
                     )
                     req.on 'error', (e) ->
                         console.log "Get snippet failed(#{e.message}): #{filePath}"
-                        console.log error
+                        console.log ('Network error...')
+
                     req.end()
 
-                else console.log "Parse entry failed: " + filePath
+                else
+                    console.log "Can't parse path: "
+                    console.log filePath
 
-        for filePath in existRequires then install(conf, filePath)
+module.exports = {
+    readJsmClientConfig
+    writeJsmClientConfig
+    parseEntry
+    publish
+    deprecate
+    install
+    update
+}
+
