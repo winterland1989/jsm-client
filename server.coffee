@@ -36,7 +36,7 @@ module.exports = (entryPath, port) ->
                     jsonStats = stats.toJson()
                     if(jsonStats.errors.length > 0)
                         console.log "Error during packing: "
-                        console.log jsonStats.error
+                        console.log jsonStats.errors
                     else
                         if started == false
                             if(jsonStats.warnings.length > 0)
