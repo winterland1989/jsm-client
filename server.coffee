@@ -36,12 +36,14 @@ module.exports = (entryPath, port) ->
                     jsonStats = stats.toJson()
                     if(jsonStats.errors.length > 0)
                         console.log "Error during packing: "
-                        console.log jsonStats.errors
+                        for e in jsonStats.errors
+                            console.log e
                     else
                         if started == false
                             if(jsonStats.warnings.length > 0)
                                 console.log "Warning during packing: "
-                                console.log jsonStats.warnings
+                                for w in jsonStats.warnings
+                                    console.log w
 
                             app = express()
 

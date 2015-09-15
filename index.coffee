@@ -73,8 +73,8 @@ parseRequires = (entryPaths) ->
         c = webpack(
             entry: entryPaths
             output:
-                path: '__dirname'
-                filename: "[name].js"
+                path: '/'
+                filename: "temp.js"
 
             module:
                 loaders: [
