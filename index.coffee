@@ -52,7 +52,7 @@ makeWebpackConfig = (entryPaths) ->
             #{JSON.stringify entryMap, null, 4},
         output: {
             path: __dirname,
-            filename: "[name].js"
+            filename: "[name].bundle.js"
         },
         module: {
             loaders: [
