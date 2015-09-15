@@ -10,7 +10,7 @@
     "jsm": "./jsm"
   },
   "keywords": [
-    "jsm"
+    "jsm", "snippet", "manager"
   ],
   "author": "winterland1989",
   "license": "MIT",
@@ -18,11 +18,12 @@
     "bluebird": "^2.9.34",
     "coffee-loader": "^0.7.2",
     "coffee-script": "^1.10.0",
-    "command-line-args": "^1.0.0",
     "commander": "^2.8.1",
+    "express": "^4.13.3",
     "fs-extra": "^0.24.0",
     "livescript-loader": "^0.1.5",
     "memory-fs": "^0.2.0",
+    "tiny-lr": "^0.1.6",
     "webpack": "^1.12.1"
   }
 }

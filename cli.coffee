@@ -1,11 +1,11 @@
 commander = require 'commander'
 jsm = require './index.coffee'
+server = require './server'
 readline = require 'readline'
 fs = require 'fs-extra'
 crypto = require 'crypto'
 path = require 'path'
 packageJson = require './package.json'
-
 
 conf = jsm.readJsmClientConfig()
 
@@ -26,6 +26,25 @@ commander
         entryPaths = for entryPath in entries
             path.resolve(process.cwd(), entryPath)
         jsm.update conf, entryPaths
+
+commander
+    .command 'webpack [entries...]'
+    .alias 'w'
+    .description 'Write sample jsm webpack config file for given entry files.'
+    .action (entries) ->
+        newConfig = jsm.makeWebpackConfig entries
+        fs.writeFileSync './webpack.config.js', newConfig, encoding: 'utf8'
+
+commander
+    .command 'server [entry] [port]'
+    .alias 's'
+    .description 'Bundle and server entry file with a empty html page.'
+    .action (entryPath, port = 8080) ->
+        if fs.existsSync entryPath
+            console.log "Starting server with #{entryPath} @#{port}..."
+            server(path.resolve(process.cwd(),entryPath), port)
+        else
+            console.log "#{entryPath} doesn't exist..."
 
 commander
     .command 'publish [entry]'
@@ -105,7 +124,9 @@ commander
 
 commander.version packageJson.version
 
-if process.argv.slice(2).length
+args = process.argv.slice(2)
+
+if args.length > 1 or args[0] == 'config' or args[0] == 'c'
     commander.parse process.argv
 else
     commander.outputHelp()

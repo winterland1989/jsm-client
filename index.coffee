@@ -39,14 +39,42 @@ parseKeywords = (content, language) ->
     keywords ?= []
     keywords.filter (word) -> word.match /\w+/g
 
+makeWebpackConfig = (entryPaths) ->
+    entryMap = {}
+    for filePath in entryPaths
+        {name} = path.parse filePath
+        entryMap[name] = './' +  path.normalize filePath
+
+    """
+    module.exports = {
+        context: __dirname,
+        entry:
+            #{JSON.stringify entryMap, null, 4},
+        output: {
+            path: __dirname,
+            filename: "[name].js"
+        },
+        module: {
+            loaders: [
+                { test: /\.coffee$/, loader: "coffee-loader" },
+                { test: /\.(coffee\.md|litcoffee)$/, loader: "coffee-loader?literate" }
+            ]
+        },
+        resolve: {
+            extensions: ["", ".coffee", ".js", ".ls"]
+        }
+    };
+    """
+
+
 parseRequires = (entryPaths) ->
     new Promise (resolve, reject) ->
         fsm = new MemoryFS()
         c = webpack(
             entry: entryPaths
             output:
-                path: '/dev/null'
-                filename: "null.js"
+                path: '__dirname'
+                filename: "[name].js"
 
             module:
                 loaders: [
@@ -271,11 +299,7 @@ install = (conf, entryPaths) ->
                                                     filePath += getExt snippet.language
 
                                                 fs.ensureFileSync filePath
-
-                                                mtime = new Date(snippet.mtime)
-
                                                 fs.writeFileSync filePath, snippet.content
-                                                fs.utimesSync filePath, mtime, mtime
 
                                                 console.log "Installing snippet: #{filePath} succeessfully"
                                                 resolve filePath
@@ -330,8 +354,7 @@ update = (conf, entryPaths) ->
                                 if res.statusCode == 200
                                     try
                                         snippet = JSON.parse Buffer.concat(chunks).toString('utf8')
-
-                                        oldMtime = (fs.statSync filePath).mtime
+                                        oldContent = fs.readFileSync filePath, encoding: 'utf8'
 
                                         {dir, name, ext: oldExtname} = path.parse filePath
                                         newExtname = (getExt snippet.language)
@@ -343,13 +366,8 @@ update = (conf, entryPaths) ->
                                             console.log 'Remove old snippet done'
                                             filePath = path.join(dir, name) + (getExt snippet.language)
 
-                                        newMtime = new Date(snippet.mtime)
-
-                                        if Math.abs(Number(newMtime) - Number(oldMtime)) > 1000
-
+                                        if oldContent != snippet.content
                                             fs.writeFileSync filePath, snippet.content
-                                            fs.utimesSync filePath, newMtime, newMtime
-
                                             console.log "Update snippet: #{filePath} succeessfully @ revision#{snippet.revision}"
                                         else
                                             console.log "No update found, skip snippet: #{filePath}"
@@ -376,6 +394,7 @@ update = (conf, entryPaths) ->
 module.exports = {
     readJsmClientConfig
     writeJsmClientConfig
+    makeWebpackConfig
     parseEntry
     publish
     deprecate
