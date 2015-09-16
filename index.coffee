@@ -6,7 +6,6 @@ fs = require 'fs-extra'
 Promise = require 'bluebird'
 webpack = require 'webpack'
 MemoryFS = require "memory-fs"
-getInstalledPath = require 'get-installed-path'
 packageJson = require './package.json'
 express = require 'express'
 tinylr = (require 'tiny-lr')()
@@ -14,7 +13,7 @@ tinylr = (require 'tiny-lr')()
 CONFIG_FILE_NAME = '.jsm.json'
 DEFAULT_REPOSITORY = 'http://jsm.winterland.me'
 
-jsmPath = getInstalledPath(packageJson.name, false)
+jsmPath = __dirname
 
 home = process.env[ if process.platform == 'win32' then 'USERPROFILE' else 'HOME' ]
 configFile = path.join home, CONFIG_FILE_NAME
@@ -105,6 +104,7 @@ parseRequires = (entryPaths) ->
         c = webpack(makeWebpackConfigObj entryPaths)
         c.outputFileSystem = fsm
         c.run (err, status) ->
+            console.log status
             if err then reject err
             else resolve(
                 existRequires: removeDuplicatedPath(
@@ -116,7 +116,6 @@ parseRequires = (entryPaths) ->
                 )
 
             )
-
 
 removeDuplicatedPath = (paths) ->
     removeExt = for filePath in paths
