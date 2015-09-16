@@ -1,11 +1,11 @@
 commander = require 'commander'
 jsm = require './index.coffee'
-server = require './server'
 readline = require 'readline'
 fs = require 'fs-extra'
 crypto = require 'crypto'
 path = require 'path'
 packageJson = require './package.json'
+spawn = require('child_process').spawn
 
 conf = jsm.readJsmClientConfig()
 
@@ -34,6 +34,7 @@ commander
     .action (entries) ->
         newConfig = jsm.makeWebpackConfig entries
         fs.writeFileSync './webpack.config.js', newConfig, encoding: 'utf8'
+        console.log "Write webpack.config.js @#{process.cwd()}."
 
 commander
     .command 'server [entry] [port]'
@@ -42,7 +43,7 @@ commander
     .action (entryPath, port = 8080) ->
         if fs.existsSync entryPath
             console.log "Starting server with #{entryPath} @#{port}..."
-            server(path.resolve(process.cwd(),entryPath), port)
+            jsm.server(path.resolve(process.cwd(),entryPath), port)
         else
             console.log "#{entryPath} doesn't exist..."
 

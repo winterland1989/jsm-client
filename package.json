@@ -10,7 +10,9 @@
     "jsm": "./jsm"
   },
   "keywords": [
-    "jsm", "snippet", "manager"
+    "jsm",
+    "snippet",
+    "manager"
   ],
   "author": "winterland1989",
   "license": "MIT",
@@ -21,6 +23,7 @@
     "commander": "^2.8.1",
     "express": "^4.13.3",
     "fs-extra": "^0.24.0",
+    "get-installed-path": "^1.0.2",
     "livescript-loader": "^0.1.5",
     "memory-fs": "^0.2.0",
     "tiny-lr": "^0.1.6",

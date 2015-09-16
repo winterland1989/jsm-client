@@ -6,10 +6,15 @@ fs = require 'fs-extra'
 Promise = require 'bluebird'
 webpack = require 'webpack'
 MemoryFS = require "memory-fs"
+getInstalledPath = require 'get-installed-path'
+packageJson = require './package.json'
+express = require 'express'
+tinylr = (require 'tiny-lr')()
 
 CONFIG_FILE_NAME = '.jsm.json'
 DEFAULT_REPOSITORY = 'http://jsm.winterland.me'
 
+jsmPath = getInstalledPath(packageJson.name, false)
 
 home = process.env[ if process.platform == 'win32' then 'USERPROFILE' else 'HOME' ]
 configFile = path.join home, CONFIG_FILE_NAME
@@ -46,6 +51,8 @@ makeWebpackConfig = (entryPaths) ->
         entryMap[name] = './' +  path.normalize filePath
 
     """
+    var path = require('path');
+
     module.exports = {
         context: __dirname,
         entry:
@@ -62,31 +69,35 @@ makeWebpackConfig = (entryPaths) ->
         },
         resolve: {
             extensions: ["", ".coffee", ".js", ".ls"]
+        },
+        resolveLoader: {
+            root: path.join("#{jsmPath}", "node_modules")
         }
     };
     """
 
+makeWebpackConfigObj = (entryPaths) ->
+    entry: entryPaths
+    output:
+        path: '/'
+        filename: "temp.js"
+
+    module:
+        loaders: [
+            { test: /\.coffee$/, loader: "coffee-loader" },
+            { test: /\.(coffee\.md|litcoffee)$/, loader: "coffee-loader?literate" }
+            { test: /\.ls/, loader: "livescript-loader" },
+        ]
+    resolve:
+        extensions:
+            ["", ".json", ".js", ".coffee", ".ls"]
+    resolveLoader:
+        root: path.join(jsmPath, "node_modules")
 
 parseRequires = (entryPaths) ->
     new Promise (resolve, reject) ->
         fsm = new MemoryFS()
-        c = webpack(
-            entry: entryPaths
-            output:
-                path: '/'
-                filename: "temp.js"
-
-            module:
-                loaders: [
-                    { test: /\.coffee$/, loader: "coffee-loader" },
-                    { test: /\.(coffee\.md|litcoffee)$/, loader: "coffee-loader?literate" }
-                    { test: /\.ls/, loader: "livescript-loader" },
-                ]
-            resolve:
-                extensions:
-                    ["", ".json", ".js", ".coffee", ".ls"]
-
-        )
+        c = webpack(makeWebpackConfigObj entryPaths)
         c.outputFileSystem = fsm
         c.run (err, status) ->
             if err then reject err
@@ -391,6 +402,63 @@ update = (conf, entryPaths) ->
                     console.log "Can't parse path: "
                     console.log filePath
 
+server = (entryPath, port) ->
+    {name} = path.parse entryPath
+    c = webpack(makeWebpackConfigObj entryPath)
+    fsm = new MemoryFS()
+    c.outputFileSystem = fsm
+    started = false
+    c.watch
+            aggregateTimeout: 300
+            poll: true
+        ,
+            (err, stats) ->
+                if err then console.log err
+                else
+                    jsonStats = stats.toJson()
+                    if(jsonStats.errors.length > 0)
+                        console.log "Error during packing: "
+                        for e in jsonStats.errors
+                            console.log e
+                    else
+                        if started == false
+                            if(jsonStats.warnings.length > 0)
+                                console.log "Warning during packing: "
+                                for w in jsonStats.warnings
+                                    console.log w
+
+                            app = express()
+
+                            app.get '/', (req, res) ->
+                                res.send(
+                                    """
+                                    <!DOCTYPE html>
+                                        <html><head>
+                                            <script>
+                                                document.write('<script src="http://' + (location.host || 'localhost').split(':')[0] + ':35729/livereload.js?snipver=1"></' + 'script>')
+                                            </script></head>
+                                            <body><script src='/#{name}.js'></script></body>
+                                        </html>
+                                    """
+                                )
+
+                            app.get "/#{name}.js" , (req, res) ->
+                                res.set 'Content-Type', 'application/javascript'
+                                res.send fsm.readFileSync('/temp.js')
+
+                            app.listen(port)
+
+                            tinylr.listen 35729, ->
+                              console.log 'Live-reload listening on 35729'
+
+                            started = true
+                            console.log "Server started..."
+                        else
+                            console.log 'Reloading...'
+                            tinylr.changed
+                                body:
+                                  files: ["#{name}.js"]
+
 module.exports = {
     readJsmClientConfig
     writeJsmClientConfig
@@ -400,5 +468,6 @@ module.exports = {
     deprecate
     install
     update
+    server
 }
 
