@@ -23,11 +23,13 @@ extMap =
     '.ls': 'livescript'
     '.coffee': 'coffeescript'
     '.js': 'javascript'
+    '.jsx': 'jsx'
 
 commentStartMap =
     'livescript': '#'
     'coffeescript': '#'
     'javascript': '//'
+    'jsx': '//'
 
 getExt = (language) ->
     for ext, lan of extMap
@@ -64,11 +66,13 @@ makeWebpackConfig = (entryPaths) ->
         module: {
             loaders: [
                 { test: /\.coffee$/, loader: "coffee-loader" },
-                { test: /\.(coffee\.md|litcoffee)$/, loader: "coffee-loader?literate" }
+                { test: /\.(coffee\.md|litcoffee)$/, loader: "coffee-loader?literate" },
+                { test: /\.ls/, loader: "livescript-loader" },
+                { test: /\.jsx?$/, loader: 'babel'}
             ]
         },
         resolve: {
-            extensions: ["", ".coffee", ".js", ".ls"]
+            extensions: ["", ".coffee", ".js", ".ls", ".jsx"]
         },
         resolveLoader: {
             root: path.join("#{jsmPath}", "node_modules")
@@ -84,13 +88,14 @@ makeWebpackConfigObj = (entryPaths) ->
 
     module:
         loaders: [
-            { test: /\.coffee$/, loader: "coffee-loader" },
+            { test: /\.coffee$/, loader: "coffee-loader" }
             { test: /\.(coffee\.md|litcoffee)$/, loader: "coffee-loader?literate" }
-            { test: /\.ls/, loader: "livescript-loader" },
+            { test: /\.ls/, loader: "livescript-loader" }
+            { test: /\.jsx?$/, loader: 'babel'}
         ]
     resolve:
         extensions:
-            ["", ".json", ".js", ".coffee", ".ls"]
+            ["", ".json", ".js", ".coffee", ".ls", ".jsx"]
     resolveLoader:
         root: path.join(jsmPath, "node_modules")
 

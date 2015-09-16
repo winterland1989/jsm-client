@@ -17,6 +17,8 @@
   "author": "winterland1989",
   "license": "MIT",
   "dependencies": {
+    "babel-core": "^5.8.24",
+    "babel-loader": "^5.3.2",
     "bluebird": "^2.9.34",
     "coffee-loader": "^0.7.2",
     "coffee-script": "^1.10.0",
