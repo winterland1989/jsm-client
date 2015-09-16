@@ -104,7 +104,6 @@ parseRequires = (entryPaths) ->
         c = webpack(makeWebpackConfigObj entryPaths)
         c.outputFileSystem = fsm
         c.run (err, status) ->
-            console.log status
             if err then reject err
             else resolve(
                 existRequires: removeDuplicatedPath(
