@@ -198,7 +198,10 @@ publish = (conf, entry, entryPath) ->
 
     parseRequires [entryPath]
     .then ({existRequires, missingRequires}) ->
+
         allRequires = (existRequires.concat missingRequires)
+        allRequires = allRequires.filter (req) ->
+            (req.indexOf 'jsm-client/node_modules/webpack/buildin/module') == -1
         console.log "Find all requirements:"
         for req in allRequires then console.log req
         Promise.all(
