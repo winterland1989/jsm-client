@@ -76,7 +76,7 @@ makeWebpackConfig = (entryPaths) ->
                 { test: /\.coffee$/, loader: "coffee-loader" },
                 { test: /\.(coffee\.md|litcoffee)$/, loader: "coffee-loader?literate" },
                 { test: /\.ls/, loader: "livescript-loader" },
-                { test: /\.jsx?$/, loader: 'babel'}
+                { test: /\.jsx$/, loader: 'babel'}
             ]
         },
         resolve: {
@@ -99,7 +99,7 @@ makeWebpackConfigObj = (entryPaths) ->
             { test: /\.coffee$/, loader: "coffee-loader" }
             { test: /\.(coffee\.md|litcoffee)$/, loader: "coffee-loader?literate" }
             { test: /\.ls/, loader: "livescript-loader" }
-            { test: /\.jsx?$/, loader: 'babel'}
+            { test: /\.jsx$/, loader: 'babel'}
         ]
     resolve:
         extensions:
