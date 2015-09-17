@@ -45,6 +45,15 @@ parseKeywords = (content, language) ->
     keywords ?= []
     keywords.filter (word) -> word.match /\w+/g
 
+parseIfUpdate = (content, language) ->
+    updateMark = "#{commentStartMap[language]}-jsm-update:"
+    for line in content.split '\n'
+        if (line.indexOf updateMark) == 0
+            words = line.substr(updateMark.length).split ' '
+            if (words.indexOf 'false') != -1
+                return false
+    return true
+
 makeWebpackConfig = (entryPaths) ->
     entryMap = {}
     for filePath in entryPaths
@@ -380,11 +389,13 @@ update = (conf, entryPaths) ->
                                             console.log 'Remove old snippet done'
                                             filePath = path.join(dir, name) + (getExt snippet.language)
 
-                                        if oldContent != snippet.content
-                                            fs.writeFileSync filePath, snippet.content
-                                            console.log "Update snippet: #{filePath} succeessfully @ revision#{snippet.revision}"
-                                        else
-                                            console.log "No update found, skip snippet: #{filePath}"
+                                        if parseIfUpdate(oldContent, extMap[oldExtname])
+                                            if oldContent != snippet.content
+                                                fs.writeFileSync filePath, snippet.content
+                                                console.log "Update snippet: #{filePath} succeessfully @ revision#{snippet.revision}"
+                                            else
+                                                console.log "No update found, skip snippet: #{filePath}"
+                                        else console.log "Force no update[-jsm-update: false], skip snippet: #{filePath}"
 
                                         if snippet.deprecated
                                             console.log "Snippet: #{filePath} DEPRECATED !!!"
