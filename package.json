@@ -1,6 +1,6 @@
 {
   "name": "jsm-client",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Client for jsm, a javascript snippet manager.",
   "main": "index.js",
   "scripts": {

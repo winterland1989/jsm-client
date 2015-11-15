@@ -206,7 +206,9 @@ publish = (conf, entry, entryPath) ->
         for req in allRequires then console.log req
         Promise.all(
             for req in allRequires then do (req=req) ->
-                reqObj  = parseEntry req
+                reqRelative = path.relative entryPath, req
+                reqObj  = parseEntry reqRelative
+                if !reqObj.author? then reqObj.author = entry.author
                 reqTitle = reqObj.author + '/' +reqObj.title
                 console.log "Checking #{reqTitle}..."
                 getData = querystring.stringify(
